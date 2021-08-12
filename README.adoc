@@ -1,0 +1,17 @@
+= APB Transactor for CPU Near-Mems
+
+This repository has been repurposed from AHB-Lite sources in `Bluespec_RISCV` for
+use with a CPU near-mems. The current version only supports single requests. In
+general the transactors can be used with any sort of near-mem.
+
+While the repository does support standalone testing of the master with a memory
+model attached to a AHB-Lite slave, it is meant to be eventually used as an
+adapter with a CPU's Near-Mem implementation.
+
+== Directory Structure
+
+* `build`            : standalone simulation-based testing
+* `doc`              : documentation and notes
+* `src`              : design sources
+* `src_tb`           : testbench sources
+* `src_bsc_lib_RTL`  : RTL library sources for building verilator simulator
