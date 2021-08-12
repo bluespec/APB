@@ -134,7 +134,7 @@ instance Connectable #(APB_Initiator_IFC #(wd_data),
       endrule
 
       (* fire_when_enabled, no_implicit_conditions *)
-      rule rl_connect_hresp;
+      rule rl_connect_presp;
 	 initiator.pslverr  (target.pslverr);
       endrule
 
@@ -182,7 +182,7 @@ module mkDummy_APB_Target (APB_Target_IFC #(wd_data));
 
       // Outputs
       method Bool            pready  = True;
-      method APB_Resp        pslverr = False;
+      method Bool            pslverr = False;
       method Bit #(wd_data)  prdata  = 'hABCD_EF89;
    endinterface;
 endmodule

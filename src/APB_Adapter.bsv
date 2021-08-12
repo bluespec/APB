@@ -235,7 +235,7 @@ module mk_APB_Adapter #(
       rg_state  <= IDLE;
 
       // Response handling and packing
-      Bit #(32) data = wi_hrdata;
+      Bit #(32) data = wi_prdata;
       Bool ok = !wi_pslverr;
 
       let rsp = Read_Data { ok: ok, data: data };
@@ -287,7 +287,7 @@ module mk_APB_Adapter #(
 
    // ----------------
    // APB side
-   interface APB_Master_IFC mem_master;
+   interface APB_Initiator_IFC mem_master;
       method paddr     = paddr;
       method pwdata    = pwdata;
       method pwrite    = pwrite;
