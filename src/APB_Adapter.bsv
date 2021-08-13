@@ -1,13 +1,34 @@
-// Copyright (c) 2020 Bluespec, Inc.  All Rights Reserved
+// Copyright (c) 2021 Bluespec, Inc.  All Rights Reserved
 
 package APB_Adapter;
 
 // ================================================================
-// Adapter converting generic 32b-wide read/write requests into an
-// APB bus master.
+// Adapter converting generic 32b-wide read/write requests from a
+// MMIO client into signaling as an APB bus master.
+//
+// This adapter implements v2.0 of the AMBA APB specification as
+// per the document: ARM IHI 0034C ID042910
+//
 // 'Client' upstream:
-// - MMIO device: requests/responses are for 32b word or sub-word,
-//                and where lane-alignment is already done.
+// - MMIO device: requests/responses are for 8/16/32-bit reads and
+//                writes and where lane-alignment is already done.
+//
+// Expectations between client and adapter:
+// - Write data from Client aligned to appropriate bytelane in 32-
+//   bit word. APB adapter will derive appropriate write strobes
+//   from size code.
+//
+// - Read response from APB Adapter will have the desired word or
+//   sub-word aligned to the appropriate bytelane. All reads issued
+//   on the APB will be for 32-bits and with addresses that are
+//   32-bit aligned.
+//
+// Expectations from an APB target:
+// - The target must respect the byte strobe information for writes.
+// - If the target has locations that are byte addressable, since
+//   the requests will always be 32-bit (bus-width) aligned, the
+//   target may have to read multiple locations to service a
+//   read request and place the bytes in the appropriate byte lanes.
 // 
 // NOTES:
 // =====
@@ -17,10 +38,10 @@ package APB_Adapter;
 // This module collects and discards write-responses. There is no
 // write response to the client. Errors on writes are not checked
 // or reported.
+// 
+// Read responses are passed up to the client.
 //
-// The APB bus master can be used with 32b buses (FABRIC32). The
-// adapter assumes that the entire bus-width of data is valid (no
-// write strobes)
+// The PPROT signal is not implemented and is always tied to 010.
 //
 // The STANDALONE macro should be enabled when the Adapter is to be
 // instantiated in its own hierarchy or for standalone verification
@@ -88,7 +109,7 @@ interface APB_Adapter_IFC;
 
    // ----------------
    // Fabric interface
-   interface APB_Initiator_IFC #(APB_Wd_Data) mem_master;
+   interface APB_Initiator_IFC mem_master;
 
 endinterface
 
@@ -102,33 +123,27 @@ endinterface
 // Convert a 64-bit PA to an APB Fabric Address
 // Discard the upper 32 bits
 
-function AHB_Fabric_Addr fv_Addr_to_Fabric_Addr (Bit #(64) addr);
-return truncate (addr);
+function APB_Fabric_Addr fv_Addr_to_Fabric_Addr (Bit #(64) addr);
+   APB_Fabric_Addr word_addr = truncate (addr);
+   word_addr = ((word_addr >> 2) << 2);
+   return (word_addr);
 endfunction
 
 `else
 
 // Convert a XLEN Address to an APB Fabric Address 
 function APB_Fabric_Addr fv_Addr_to_Fabric_Addr (Addr addr);
+   // Get rid of the byte address 
+   Addr word_addr = ((addr >> 2) << 2);
 `ifdef RV32
-return (addr);
+   return (word_addr);
 `endif
 `ifdef RV64
-return truncate (addr);
+   return truncate (word_addr);
 `endif
 endfunction
 
 `endif   // `else ISA_PRIV_S
-
-// Convert an APB Fabric Address to an XLen Address
-function Addr fv_Fabric_Addr_to_Addr (APB_Fabric_Addr a);
-`ifdef RV32
-   return (pack (a));
-`endif
-`ifdef RV64
-   return extend (a);
-`endif
-endfunction
 
 // Adjust incoming write data based on FABRIC32. As both NM data and fabric data
 // is of the same size in this adapter, no adjustments needed.
@@ -137,12 +152,36 @@ function APB_Fabric_Data fv_get_apb_wdata (Bit #(32) wr_data);
    return (wdata);
 endfunction
 
+// Derive the strb from the size of the transfer requested by the
+// client and the byte address
+function APB_Fabric_Strb fv_size_to_strb (Bit #(2) byte_addr, Bit #(2) size_code);
+   // Words
+   APB_Fabric_Strb strb = 4'b1111;
+
+   // bytes
+   if (size_code == 2'b00) begin
+      strb = case (byte_addr)
+                2'b00 : 4'b0001;
+                2'b01 : 4'b0010;
+                2'b10 : 4'b0100;
+                2'b11 : 4'b1000;
+             endcase;
+   end
+
+   // half-word
+   else if (size_code == 2'b01) begin
+      strb = (byte_addr[1] == 1'b1) ? 4'b1100 : 4'b0011;
+   end
+
+   return (strb);
+endfunction
+
 // ================================================================
 // MODULE IMPLEMENTATION
 `ifdef STANDALONE
 (* synthesize *)
 `endif
-module mk_APB_Adapter #(
+module mkAPB_Adapter #(
      parameter Bit #(2) verbosity   // 0=quiet, 1=rule firings
 `ifdef STANDALONE
 ) (APB_Adapter_IFC);
@@ -156,8 +195,6 @@ module mk_APB_Adapter #(
 `endif
 
 `ifdef STANDALONE
-   Bool guard_enq = False;
-   Bool unguard_deq = True;
    // The request and write data FIFOs need explicit EMPTY checking on the DEQ
    // side. This allows us to directly drive the APB signals from these FIFOs
    // removing the need for extra registers in the adapter
@@ -188,13 +225,14 @@ module mk_APB_Adapter #(
 
    // A write request is waiting. For writes, we need wr_addr and wr_data
    // available as we compute HSIZE from wr_data.wstrb
-   Bool write_request = !read_request && f_single_write_data.notEmpty;
+   Bool write_request = !req.is_read && f_single_write_data.notEmpty;
 
    Bool new_request = (read_request || write_request) && f_single_reqs.notEmpty;
 
    // Continuous signals driven straight from input FIFOs
    let paddr  = fv_Addr_to_Fabric_Addr (req.addr);
    let pwdata = fv_get_apb_wdata (f_single_write_data.first);
+   let pstrb  = req.is_read ? 0 : fv_size_to_strb (req.addr[1:0], req.size_code);
    let pwrite = !req.is_read;
 
    // Continuous output based on FSM state
@@ -207,6 +245,7 @@ module mk_APB_Adapter #(
       if (verbosity > 0) begin
          $display ("%0d: %m.rl_new_tfr (paddr 0x%08h) ", cur_cycle, paddr
                  , "(pwrite: ", fshow (pwrite), ") "
+                 , "(pstrb: %04b) ", pstrb
                  , "(pwdata 0x%08h) ", pwdata);
       end
    endrule
@@ -291,6 +330,8 @@ module mk_APB_Adapter #(
       method paddr     = paddr;
       method pwdata    = pwdata;
       method pwrite    = pwrite;
+      method pstrb     = pstrb;
+      method pprot     = 3'b010;
       method penable   = penable;
 
       method Action prdata (APB_Fabric_Data data);
