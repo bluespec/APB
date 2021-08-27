@@ -237,6 +237,7 @@ module mkAPB_Adapter #(
 
    // Continuous output based on FSM state
    let penable= (rg_state == ACCESS);
+   let psel = (rg_state != IDLE);
 
    // --------
    // IDLE state: Entry point for new request. Setup addr phase signals.
@@ -333,6 +334,7 @@ module mkAPB_Adapter #(
       method pstrb     = pstrb;
       method pprot     = 3'b010;
       method penable   = penable;
+      method psel      = psel;
 
       method Action prdata (APB_Fabric_Data data);
          wi_prdata <= data;

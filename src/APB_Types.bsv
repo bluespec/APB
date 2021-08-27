@@ -26,6 +26,7 @@ interface APB_Initiator_IFC;
    // Outputs
    (* result = "PADDR"  *)    method APB_Fabric_Addr paddr;
    (* result = "PENABLE"*)    method Bool            penable;
+   (* result = "PSEL"*)       method Bool            psel;
    (* result = "PWDATA" *)    method APB_Fabric_Data pwdata;
    (* result = "PWRITE" *)    method Bool            pwrite;
    (* result = "PSTRB" *)     method APB_Fabric_Strb pstrb;
@@ -75,6 +76,7 @@ endinterface
 function Action fa_display_bus_signals (APB_Fabric_Addr paddr,
 					APB_Fabric_Data pwdata,
 					Bool            penable,
+					Bool            psel,
 					Bool            pwrite,
 					APB_Fabric_Data prdata,
 					APB_Fabric_Strb pstrb,
@@ -88,6 +90,7 @@ function Action fa_display_bus_signals (APB_Fabric_Addr paddr,
       $display ("    pstrb    : %04b", pstrb);
       $display ("    pstrb    : %03b", pprot);
       $display ("    penable  : ",     fshow (penable));
+      $display ("    psel     : ",     fshow (psel));
       $display ("    prdata   : %08h", prdata);
       $display ("    pready   : ",     fshow (pready));
       $display ("    pslverr  : ",     fshow (pslverr));
@@ -138,8 +141,8 @@ instance Connectable #(APB_Initiator_IFC, APB_Target_IFC);
       endrule
 
       (* fire_when_enabled, no_implicit_conditions *)
-      rule rl_connect_hsel;
-	 target.psel (True);
+      rule rl_connect_psel;
+	 target.psel (initiator.psel);
       endrule
 
       // ----------------------------------------------------------------
@@ -182,6 +185,7 @@ module mkDummy_APB_Initiator (APB_Initiator_IFC);
       method Bit #(3)        pprot     = 'h010;
       method Bool            pwrite    = False;
       method Bool            penable   = False;
+      method Bool            psel      = False;
 
       // Inputs
       method Action prdata  (APB_Fabric_Data data)  = noAction;
