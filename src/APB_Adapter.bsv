@@ -244,10 +244,10 @@ module mkAPB_Adapter #(
    rule rl_new_tfr (new_request && (rg_state == IDLE));
       rg_state  <= SETUP;
       if (verbosity > 0) begin
-         $display ("%0d: %m.rl_new_tfr (paddr 0x%08h) ", cur_cycle, paddr
-                 , "(pwrite: ", fshow (pwrite), ") "
-                 , "(pstrb: %04b) ", pstrb
-                 , "(pwdata 0x%08h) ", pwdata);
+         $display ("%06d:[D]:%m.rl_new_tfr (paddr 0x%08h) ", cur_cycle, paddr
+                 , "           (pwrite: ", fshow (pwrite), ") "
+                 , "           (pstrb: %04b) ", pstrb
+                 , "           (pwdata 0x%08h) ", pwdata);
       end
    endrule
 
@@ -259,10 +259,10 @@ module mkAPB_Adapter #(
 
       if (verbosity > 0) begin
          if (pwrite)
-            $display ("%0d: %m.rl_setup: (addr 0x%08h) (wdata 0x%08h)"
+            $display ("%06d:[D]:%m.rl_setup: (addr 0x%08h) (wdata 0x%08h)"
                , cur_cycle, paddr, pwdata);
          else
-            $display ("%0d: %m.rl_setup: (addr 0x%08h) "
+            $display ("%06d:[D]:%m.rl_setup: (addr 0x%08h) "
                , cur_cycle, paddr);
       end
    endrule
@@ -284,7 +284,7 @@ module mkAPB_Adapter #(
       // Advance request queue
       f_single_reqs.deq;
       if (verbosity > 0) begin
-         $display ("%0d: %m.rl_read_response: ", cur_cycle, fshow (rsp));
+         $display ("%06d:[D]:%m.rl_read_response: ", cur_cycle, fshow (rsp));
       end
    endrule
 
@@ -299,7 +299,7 @@ module mkAPB_Adapter #(
       f_single_write_data.deq;
 
       if (verbosity > 0) begin
-         $display ("%0d: %m.rl_write_response", cur_cycle);
+         $display ("%06d:[D]:%m.rl_write_response", cur_cycle);
       end
    endrule
 
@@ -307,11 +307,13 @@ module mkAPB_Adapter #(
    // ================================================================
    // INTERFACE
    method Action reset;
+`ifdef STANDALONE
       f_single_reqs.clear;
       f_single_write_data.clear;
       f_single_read_data.clear;
+`endif
       rg_state <= IDLE;
-      if (verbosity > 1) $display ("%0d: %m.reset", cur_cycle);
+      if (verbosity > 1) $display ("%06d:[D]:%m.reset", cur_cycle);
    endmethod
 
 
